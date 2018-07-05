@@ -178,16 +178,16 @@ export default {
   /**
    * 获取缩略图地址
    * @param {String} oriPath 
-   * @param {Number} heigth 
+   * @param {Number} height
    * @param {Number} width 
    */
-  getThumbnailPath(oriPath, heigth, width) {
+  getThumbnailPath(oriPath, width, height) {
     const insertBeforeIndex = function (thisstr, index, string) {
       const front = thisstr.substring(0, index)
       const rear = thisstr.substring(index)
       return front + string + rear
     }
-   return insertBeforeIndex(oriPath, oriPath.lastIndexOf('.'), '_100x75')
+    return insertBeforeIndex(oriPath, oriPath.lastIndexOf('.'), '_' + width + 'x' + height)
   },
   /**
    * 图片放大镜效果
@@ -202,9 +202,11 @@ export default {
    *      -- relative-mouse: 相对鼠标偏移 (默认) 
    *      -- fixed: 相对屏幕左上角偏移（固定位置） 
    *      -- relative-src: 相对源<img>标签偏移 
-   *    - magPositionX: 放大镜水平偏移量，偏移方式由magPosition决定，负值向左，正值向右，fixed模式时负值将隐藏放大镜
-   *    - magPositionY: 放大镜垂直偏移量，偏移方式由magPosition决定，负值向上，正值向下，fixed模式时负值将隐藏放大镜
-   * @param {Function} callback - 可选的回调函数，每次imgNode的onmousemove触发时都会执行此函数并传入此次鼠标事件的引用
+   *    - magPositionX: 放大镜水平偏移量，偏移方式由magPosition决定，负值向左，正值向右，fixed模式时负值将隐藏放大镜 
+   *    - magPositionY: 放大镜垂直偏移量，偏移方式由magPosition决定，负值向上，正值向下，fixed模式时负值将隐藏放大镜 
+   *    - maskingColor: 蒙版颜色，默认白色 
+   *    - maskingOpacity: 蒙版透明度。默认50% 
+   * @param {Function} callback - 可选的回调函数，每次imgNode的onmousemove触发时都会执行此函数并传入此次鼠标事件的引用 
    */
   magnifierOnMouseMove(imgNode, option = {
     hasCliped: false,
@@ -213,7 +215,9 @@ export default {
     srcMagChunkSize: 200,
     magPosition: 'relative-mouse',
     magPositionX: -420,
-    magPositionY: 0
+    magPositionY: 0,
+    maskingColor: '#ffffff',
+    maskingOpacity: 0.5
   }, callback = function (){}) {
 
     if (!imgNode || !(imgNode instanceof HTMLImageElement)) {
@@ -223,11 +227,13 @@ export default {
     option = Object.assign({
       hasCliped: false,
       mountNode: document.body,
-      magnifierSize: 550,
-      srcMagChunkSize: 200,
+      magnifierSize: 420,
+      srcMagChunkSize: 210,
       magPosition: 'relative-mouse',
-      magPositionX: -550,
-      magPositionY: 0
+      magPositionX: -422,
+      magPositionY: 0,
+      maskingColor: '#ffffff',
+      maskingOpacity: 0.5
     }, option)
     // 如果目标不是html Node，拒绝执行
     if (!(option.mountNode instanceof Node)) {
@@ -246,18 +252,26 @@ export default {
       canvas = document.createElement('canvas')
       canvas.id = '__magnifier__pic__'
       ctx = canvas.getContext('2d')
+      // canvas 内秉宽高
       canvas.height = option.magnifierSize
       canvas.width = option.magnifierSize
+      // canvas元素宽高
       canvas.style.height = option.magnifierSize + 'px'
       canvas.style.width = option.magnifierSize + 'px'
       canvas.style.zIndex = '3998'
       canvas.style.position = 'fixed'
+      canvas.style.border = '1px solid #000'
+      // 阻止接受鼠标事件(IE11)
+      canvas.style.pointerEvents = 'none'
       ctx.fillRect(0, 0, option.magnifierSize, option.magnifierSize)
     } else {
       canvas = document.getElementById('__magnifier__pic__')
       ctx = canvas.getContext('2d')
       ctx.fillRect(0, 0, option.magnifierSize, option.magnifierSize)
     }
+    // canvas.onmousemove = evt => evt.preventDefault()
+    // canvas.onmouseout = evt => evt.preventDefault()
+    // canvas.onmouseover = evt => evt.preventDefault()
     // （IE9+）
     const image = new Image()
     image.crossOrigin = 'anonymous'
@@ -268,6 +282,7 @@ export default {
     }
     // mouse move over imgnode
     imgNode.onmousemove = evt => {
+      evt.stopPropagation()
       try {
         callback(evt)
       } catch (error) {
@@ -299,15 +314,47 @@ export default {
           canvas.style.bottom = ''
           break
       }
+      // add 蒙版
+      let masking
+      if (!document.getElementById('__img_magnifier_masking__')) {
+        masking = document.createElement('div')
+        masking.id = '__img_magnifier_masking__'
+        masking.style.position = 'fixed'
+        masking.style.zIndex = '3998'
+        // 白色半透明
+        masking.style.backgroundColor = option.maskingColor
+        masking.style.opacity = '' + option.maskingOpacity
+        masking.style.display = 'block'
+        // 阻止接受鼠标事件(IE11)
+        masking.style.pointerEvents = 'none'
+        // masking.onmousemove = evt => evt.preventDefault()
+        // masking.onmouseout = evt => evt.preventDefault()
+        // masking.onmouseover = evt => evt.preventDefault()
+        // 蒙版挂载到body
+        document.body.appendChild(masking)
+      } else {
+        masking = document.getElementById('__img_magnifier_masking__')
+      }
+      masking.style.top = evt.clientY + 'px'
+      masking.style.left = evt.clientX + 'px'
+      // 原图像 待放大 块大小
+      const srcMagChunkPX = option.srcMagChunkSize / (image.naturalHeight / imgNode.offsetHeight)
+      masking.style.width = srcMagChunkPX + 'px'
+      masking.style.height = srcMagChunkPX + 'px'
       // transfer
-      const syy = /*option.hasCliped ? evt.offsetY : */evt.offsetY * (image.naturalHeight / imgNode.offsetHeight)
-      const sxx = /*option.hasCliped ? evt.offsetX : */evt.offsetX * (image.naturalWidth / imgNode.offsetWidth)
+      const syy = evt.offsetY * (image.naturalHeight / imgNode.offsetHeight)
+      const sxx = evt.offsetX * (image.naturalWidth / imgNode.offsetWidth)
       ctx.drawImage(image, sxx, syy, option.srcMagChunkSize, option.srcMagChunkSize, 0, 0, option.magnifierSize, option.magnifierSize)
     }
     // mouse out of imgnode
     imgNode.onmouseout = evt => {
+      evt.stopPropagation()
       // destory the magnifier
-      option.mountNode.removeChild(document.getElementById('__magnifier__pic__'))
+      try {
+        option.mountNode.removeChild(document.getElementById('__magnifier__pic__'))
+        document.body.removeChild(document.getElementById('__img_magnifier_masking__'))
+      } catch (error) {
+      }
     }
   }
 }
